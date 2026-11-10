@@ -19,13 +19,15 @@
   const token = () => {try{return localStorage.getItem('skill-swap-token') || '';}catch{return '';}};
   const storeToken = value => {try{value?localStorage.setItem('skill-swap-token',value):localStorage.removeItem('skill-swap-token');}catch{}};
   const state = {user:null,posts:[],exchanges:[],messages:[],route:location.hash.slice(1).split('?')[0]||'discover',query:'',category:'全部技能',mode:'all',exchangeFilter:'all',favorites:readStore('skill-swap-favorites',[]),loading:true,error:'',modal:null};
-  let toastTimer,lastFocus,afterIdentity,busy=false;
+  let toastTimer,lastFocus,afterIdentity,busy=false,refreshPromise=null;
   const base=(window.SKILL_API_BASE || window.SKILL_API_URL || '').replace(/[/]$/,'');
   async function api(path, options={}) {
-    const auth=token();
-    const response=await fetch(base+'/api'+path,{method:options.method||'GET',headers:{Accept:'application/json',...(options.body?{'Content-Type':'application/json'}:{}),...(auth?{Authorization:'Bearer '+auth}:{})},...(options.body?{body:JSON.stringify(options.body)}:{})});
-    let data;try{data=await response.json();}catch{throw new Error('暂时无法连接，请稍后重试');}
-    if(!response.ok){if(response.status===401){storeToken('');state.user=null;}const error=new Error(data.error||'操作没有完成，请重试');error.status=response.status;throw error;}return data;
+    const auth=token(),controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),90000);
+    try{
+      const response=await fetch(base+'/api'+path,{method:options.method||'GET',signal:controller.signal,headers:{Accept:'application/json',...(options.body?{'Content-Type':'application/json'}:{}),...(auth?{Authorization:'Bearer '+auth}:{})},...(options.body?{body:JSON.stringify(options.body)}:{})});
+      let data;try{data=await response.json();}catch(e){if(e.name==='AbortError')throw e;throw new Error('暂时无法连接，请稍后重试');}
+      if(!response.ok){if(response.status===401){storeToken('');state.user=null;}const error=new Error(data.error||'操作没有完成，请重试');error.status=response.status;throw error;}return data;
+    }catch(e){if(e.name==='AbortError')throw new Error('连接用了一点时间，请再试一次');throw e;}finally{clearTimeout(timeout);}
   }
   function toast(message){const el=$('#toast');if(!el)return;clearTimeout(toastTimer);el.textContent=message;el.classList.add('show');toastTimer=setTimeout(()=>el.classList.remove('show'),3300);}
   const tags=value=>Array.isArray(value)?value:String(value||'').split(/[,，、]/).map(x=>x.trim()).filter(Boolean);
@@ -37,9 +39,13 @@
   function dateText(value){if(!value)return'时间待商量';const d=new Date(value);return Number.isNaN(d.getTime())?esc(value):d.toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false});}
   function localDate(value){const d=value?new Date(value):new Date(Date.now()+86400000);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
   function navigate(route){closeModal();if(state.route===route){render();window.scrollTo({top:0,behavior:'smooth'});}else location.hash=route;}
-  async function refresh(options={}){
-    try{let data;try{data=await api('/bootstrap');}catch(e){if(e.status===401){storeToken('');data=await api('/bootstrap');}else throw e;}state.user=data.user||null;state.posts=data.posts||[];state.exchanges=data.exchanges||[];state.messages=data.messages||[];state.error='';}catch(e){state.error=e.message||'暂时连接不上，请稍后重试';}
-    state.loading=false;if(!options.quiet)render();else{updateShell();if(state.modal?.type==='thread')renderThreadBody(state.modal.id);}return!state.error;
+  function refresh(options={}){
+    if(refreshPromise)return refreshPromise;
+    refreshPromise=(async()=>{
+      try{let data;try{data=await api('/bootstrap');}catch(e){if(e.status===401){storeToken('');data=await api('/bootstrap');}else throw e;}state.user=data.user||null;state.posts=data.posts||[];state.exchanges=data.exchanges||[];state.messages=data.messages||[];state.error='';}catch(e){state.error=e.message||'暂时连接不上，请稍后重试';}
+      state.loading=false;if(!options.quiet)render();else{updateShell();if(state.modal?.type==='thread')renderThreadBody(state.modal.id);}return!state.error;
+    })().finally(()=>{refreshPromise=null;});
+    return refreshPromise;
   }
   function updateShell(){
     document.querySelectorAll('[data-route]').forEach(el=>{el.classList.toggle('active',el.dataset.route===state.route);el.setAttribute('aria-current',el.dataset.route===state.route?'page':'false');});
@@ -58,7 +64,8 @@
   function inspirationCard(item,index){return `<article class='inspiration-card'><div class='inspiration-visual ${item.tone}'><span aria-hidden='true'>${item.icon}</span><div><span class='inspiration-label'>${item.category}</span><strong>${item.teach}</strong></div><span class='inspiration-arrow' aria-hidden='true'>↗</span></div><div class='inspiration-body'><h3>${item.title}</h3><p>${item.description}</p><div class='wanted-row'><span>${item.teach}</span><span aria-hidden='true'>⇄</span><strong>${item.want}</strong></div><button class='btn btn-small btn-ghost' data-action='inspiration' data-index='${index}'>我也想这样交换 ↗</button></div></article>`;}
   function discoveryResults(){
     const list=filteredPosts(state.posts).sort((a,b)=>matchInfo(b).score-matchInfo(a).score||new Date(b.createdAt)-new Date(a.createdAt));
-    if(state.loading)return`<div class='loading-state'><span class='spinner'></span>正在发现新技能…</div>`;
+    if(state.loading)return`<div class='loading-state' role='status'><span class='spinner'></span>正在寻找合拍的伙伴…</div>`;
+    if(state.error&&!state.posts.length)return empty('暂时没有连接上','再试一下，看看有哪些新伙伴。','重新连接','retry','↻');
     if(list.length)return`<div class='results-bar'><span>${list.length} 个技能，等你交换</span><span>优先展示与你合拍的技能</span></div><div class='skills-grid'>${list.map(p=>postCard(p)).join('')}</div>`;
     if(state.query||state.category!=='全部技能'||state.mode!=='all')return empty('还没遇见这项技能','换个关键词试试，或者发布你想学的，让合适的人发现你。','清空筛选','clear-filters','⌕');
     return`<div class='community-start'><div class='community-start-icon' aria-hidden='true'>✦</div><div><h3>你的拿手好戏，会是这里的下一个发现</h3><p>发布一项技能，告诉大家你能教什么、想学什么。</p></div><button class='btn btn-primary' data-action='publish'>发布我的技能 ↗</button></div>`;

@@ -4,5 +4,6 @@
   "private": true,
   "description": "A platform for exchanging skills and arranging learning sessions.",
   "engines": { "node": ">=20" },
-  "scripts": { "start": "node server.js", "build": "node build-static.js", "check": "node --check server.js && node --check app.js" }
+  "scripts": { "start": "node server.js", "build": "node build-static.js", "check": "node --check server.js && node --check app.js" },
+  "dependencies": { "pg": "8.16.3" }
 }

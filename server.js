@@ -87,7 +87,10 @@ function editablePost(body, previous = {}) {
 async function initStore() {
   if (process.env.DATABASE_URL) {
     const { Pool } = require('pg');
-    pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5, connectionTimeoutMillis: 15000 });
+    const databaseUrl = new URL(process.env.DATABASE_URL);
+    // Neon uses public certificates; keep TLS certificate and hostname checks on.
+    if (databaseUrl.hostname.endsWith('.neon.tech')) databaseUrl.searchParams.set('sslmode', 'verify-full');
+    pool = new Pool({ connectionString: databaseUrl.toString(), max: 5, connectionTimeoutMillis: 30000, enableChannelBinding: true });
     pool.on('error', err => console.error('Database connection error:', err.message));
     await pool.query('CREATE TABLE IF NOT EXISTS skill_exchange_state (id integer PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
     await pool.query('INSERT INTO skill_exchange_state(id,data) VALUES (1,$1::jsonb) ON CONFLICT(id) DO NOTHING', [JSON.stringify(blankState())]);
