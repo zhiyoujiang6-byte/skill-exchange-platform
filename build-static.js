@@ -2,7 +2,7 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const files = ['index.html', 'styles.css', 'app.js', 'config.js'];
+const files = ['index.html', 'styles.css', 'app.js', 'config.js', 'motion.js', 'gsap.min.js'];
 const destination = path.join(__dirname, 'public');
 
 async function build() {

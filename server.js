@@ -279,7 +279,7 @@ async function handler(req, res) {
     if (pathname.startsWith('/api/')) return await api(req, res, pathname);
     if (!['GET', 'HEAD'].includes(req.method)) return send(res, 405, { error: '此请求方式不支持' });
     const relative = pathname === '/' ? 'index.html' : pathname.slice(1);
-    const rootAllowed = ['index.html', 'styles.css', 'app.js', 'config.js', 'favicon.svg', 'favicon.ico', 'manifest.json'];
+    const rootAllowed = ['index.html', 'styles.css', 'app.js', 'config.js', 'motion.js', 'gsap.min.js', 'favicon.svg', 'favicon.ico', 'manifest.json'];
     const assetAllowed = /^assets\/[a-zA-Z0-9_./-]+\.(svg|png|webp|jpg|jpeg|ico)$/.test(relative) && !relative.split('/').includes('..');
     if (!rootAllowed.includes(relative) && !assetAllowed) return send(res, 404, { error: '页面不存在' });
     let file;
